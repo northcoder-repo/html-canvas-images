@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Example</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+
+  <style>
+	.imgmap_centered {
+	  text-align: center;
+	}
+
+	button.imgmap_shapes {
+	  display: inline-block;
+	  padding: 5px;
+	  margin: 10px;
+	}
+
+	div.imgmap table {
+	  margin: 5px auto;
+	  border-collapse: collapse;
+	  width: 50%;
+	}
+
+	div.imgmap th {
+	  text-align: left;    
+	}
+
+	div.imgmap tr {
+	  border-bottom: 1px solid #ccc;
+	}
+
+	div.imgmap table td > button {
+	  padding: 5px;
+	  margin: 5px;
+	}
+  </style>
+
+</head>
+
+<body>
+
+    <img id="source" alt="taverna" style="display: none;"
+	     src="https://user-images.githubusercontent.com/56733719/141156687-8bbb9eec-4752-4169-b108-50e397e4a8b7.png">
+
+    <div class="imgmap_centered">    
+        <button id="rect" class="imgmap_shapes">New &#11036;</button>
+        <button id="circle" class="imgmap_shapes">New &#9711;</button> 
+    </div>
+
+    <div id="container" style="margin: auto; border:1px solid #d3d3d3;">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="imgmap" style="padding: 10px;">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th><th>Shape</th><th>Coordinates</th><th></th>
+                </tr>
+            </thead>
+            <tbody id="shapesRows">
+            </tbody>
+        </table>
+    </div>
+
+<script>
+window.onload = function() {
+
+  // inspired by https://stackoverflow.com/a/28285879/12567365
+  // extended to support resizing, handling of one shape at
+  // a time, scrolling/resizing for the viewport, and deletion
+  // of shapes.
+
+  // load image onto canvas
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const img = document.getElementById('source');
+  const container = document.getElementById('container');
+  container.style.width = '' + (img.naturalWidth + 2) + 'px';
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  ctx.drawImage(img, 1, 1);
+
+  // get canvas related references
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+
+  // an array of objects that define different shapes:
+  var shapes = [];
+  // each shape has one handle, for resizing the shape:
+  var handles = [];
+
+  // indexes into shapes[] and handles[]
+  var dragIdx = -1; 
+  var resizeIdx = -1;
+  
+  //drag/resize related variables
+  var startX;
+  var startY;
+
+  let fillStyle = 'rgba(255, 255, 255, 0.6)';
+  let strokeStyle = 'red';
+
+  $('button#rect').on('click', function() {
+    drawNewRect();
+  })
+
+  $('button#circle').on('click', function() {
+    drawNewCircle();
+  })
+
+  $('#shapesRows').on('click', 'button', function() {
+    deleteShape(this);
+  })
+
+  // listen for global mouse events
+  canvas.onmousedown = myDown;
+  canvas.onmouseup = myUp;
+  canvas.onmousemove = myMove;
+
+  // call to draw the scene
+  draw();
+
+
+  function drawNewRect() {
+    let newIdx = shapes.length;
+    // define a rectangle
+    shapes.push({
+      idx: newIdx,
+      type: "rect",
+      x: 10,
+      y: 10,
+      width: 50,
+      height: 40,
+      fill: fillStyle,
+      stroke: strokeStyle
+    });
+
+    var s = shapes[newIdx];
+    handles.push({
+      idx: newIdx,
+      type: "rect",
+      x: s.x + s.width - 5,
+      y: s.y + s.height - 5,
+      width: 5,
+      height: 5,
+      fill: fillStyle,
+      stroke: strokeStyle
+    });
+
+    draw();
+    addRowToTable(s);
+  }
+
+
+  function drawNewCircle() {
+    let newIdx = shapes.length;
+    // define a circle
+    shapes.push({
+      idx: shapes.length,
+      type: "circle",
+      x: 30,
+      y: 30,
+      r: 20,
+      fill: fillStyle,
+      stroke: strokeStyle
+    });
+
+    var s = shapes[newIdx];
+    handles.push({
+      idx: s.idx,
+      type: "circle",
+      x: s.x,
+      y: s.y - s.r + 3,
+      r: 3,
+      fill: fillStyle,
+      stroke: strokeStyle
+    });
+
+    draw();
+    addRowToTable(s);
+  }
+
+  function deleteShape(e) {
+    // get index of shape to be deleted
+    let idx = $( e ).attr( 'data-shape-del' );
+
+    // remove the selected shape from data arrays
+    shapes.splice(idx, 1);
+    handles.splice(idx, 1);
+
+    // delete all shape rows from the table
+    $( 'tr[data-shape-id]' ).remove();
+
+    // renumber the remaining shape indexes and
+    // re-populate the table's rows
+    for (var i = 0; i < shapes.length; i++) {
+      shapes[i]['idx'] = i;
+      handles[i]['idx'] = i;
+      addRowToTable(shapes[i]);
+    }
+
+    draw();
+    
+  }
+
+  // each new shape needs a related table row to show the shape's details
+  function addRowToTable(s) {
+    $("#shapesRows")
+      .append( $('<tr>').attr( 'data-shape-id', s.idx ) 
+        .append( $('<td>').text( s.idx +1 ) )
+        .append( $('<td>').text( s.type ) )
+        .append( $('<td>').attr( 'data-shape-coords', s.idx )
+          .text( printCoords(s) ) )
+        //.append( $('<td>')
+        //  .append( $('<select>').css( 'width', '90%') 
+        //  .attr( 'id', 's2_select_shape_' + s.idx )
+        //  .attr( 'name', 'foo' )
+        //  .attr( 'value', '' ) ) )
+        .append( $('<td>')
+          .append( $('<button>').attr( 'data-shape-del', s.idx )
+            .text( 'delete' ) )
+        )
+      );
+  }
+
+
+  // draw a single rect
+  function drawRect(r) {
+    ctx.fillStyle = r.fill;
+    ctx.strokeStyle = r.stroke;
+    ctx.beginPath();
+    ctx.rect(r.x, r.y, r.width, r.height);
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  // draw a single circle
+  function drawCircle(c) {
+    ctx.fillStyle = c.fill;
+    ctx.strokeStyle = c.stroke;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  // draw the shape's index number in the shape,
+  // for easier visual identification:
+  function drawNumber(i, x, y) {
+    ctx.font="12px Arial";
+    ctx.textAlign="center"; 
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255, 0, 0, 0.6)";
+    ctx.fillText(i+1, x, y);
+  }
+
+  // clear the canvas
+  function clear() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+  }
+
+  // redraw the scene
+  function draw() {
+    clear();
+    ctx.drawImage(img, 1, 1);
+    // redraw each shape in the shapes[] array
+    for (var i = 0; i < shapes.length; i++) {
+      // decide if the shape is a rect or circle
+      // (it's a rect if it has a width property)
+      let s = shapes[i];
+      let h = handles[i];
+      if (s.type === 'rect') {
+        drawRect(s);
+        drawNumber(i, s.x + (s.width/2), s.y + (s.height/2)); 
+        drawRect(h);
+      } else { // it's a circle
+        drawCircle(s);
+        drawNumber(i, s.x, s.y);
+        drawCircle(h);
+      };
+    }
+  }
+
+  // handle mousedown events
+  function myDown(e) {
+
+    // tell the browser we're handling this mouse event
+    e.preventDefault();
+    e.stopPropagation();
+
+    // get the current mouse position relative to canvas
+    let m = translateMouseCoords(e);
+
+    dragIdx = -1;
+    resizeIdx = -1;
+
+    // handles take priority over shapes - so check these first:
+    for (var i = 0; i < handles.length; i++) {
+      var s = shapes[i];
+      var h = handles[i];
+      // decide if the handle is a rect or circle               
+      if (h.type === 'rect') {
+        // test if the mouse is inside this handle
+        if ( pointIsInsideRect(m.x, m.y, h) ) {
+          // if yes, set the related rect's resizing index
+          dragIdx = -1;
+          resizeIdx = s.idx;
+        }
+      } else { // it's a circle
+        var dx = h.x - m.x;
+        var dy = h.y - m.y;
+        // test if the mouse is inside this circular handle
+        if ( pointIsInsideCircle(dx, dy, h.r) ) {
+          dragIdx = -1;
+          // if yes, set that circle's drag index
+          // the last one in the array has highest priority
+          resizeIdx = s.idx;
+        }
+      }
+    }
+
+    if (resizeIdx === -1) {
+      // no handles were selected, so we now
+      // test each shape to see if mouse is inside
+      dragIdx = -1;
+      for (var i = 0; i < shapes.length; i++) {
+        var s = shapes[i];
+        // decide if the shape is a rect or circle               
+        if (s.type === 'rect') {
+          // test if the mouse is inside this rect
+          if ( pointIsInsideRect(m.x, m.y, s) ) {
+            // if yes, set that rect's drag index
+            // the last one in the array has highest priority
+            dragIdx = s.idx;
+            resizeIdx = -1;
+          }
+        } else { // it's a circle
+          var dx = s.x - m.x;
+          var dy = s.y - m.y;
+          // test if the mouse is inside this circle
+          if ( pointIsInsideCircle(dx, dy, s.r) ) {
+            dragIdx = s.idx;
+          }
+        }
+      }
+    }
+
+    // save the current mouse position
+    startX = m.x;
+    startY = m.y;
+  }
+
+
+  function pointIsInsideRect(x, y, rect) {
+    return (x > rect.x) && (x < rect.x + rect.width) 
+        && (y > rect.y) && (y < rect.y + rect.height);
+  }
+
+
+  function pointIsInsideCircle(x, y, radius) {
+    return (x * x) + (y * y) < (radius * radius);
+  }
+
+
+  // handle mouseup events
+  function myUp(e) {
+    // tell the browser we're handling this mouse event
+    e.preventDefault();
+    e.stopPropagation();
+
+    // update the table coordinates
+    var s;
+    if (resizeIdx > -1) {
+      s = shapes[resizeIdx];
+    } else if (dragIdx > -1) {
+      s = shapes[dragIdx];
+    }
+    if (s) {
+      $( 'td[data-shape-coords="' + s.idx + '"]' ).text( printCoords(s) );
+    }
+
+    // clear all the dragging and resizing variables
+    dragIdx = -1;
+    resizeIdx = -1;
+
+    // print out the coordinates of each shape
+    //for (var i = 0; i < shapes.length; i++) {;
+    //  console.log( printCoords(shapes[i]) );
+    //}
+  }
+
+
+  function printCoords(s) {
+    if (s.type === 'rect') {
+      return s.idx, s.type, '' + s.x + ',' + s.y + ',' + s.width + ',' + s.height ;
+    } else if (s.type === 'circle') {
+      return s.idx, s.type, '' + s.x + ',' + s.y + ',' + s.r ;
+    }
+  }
+
+  // handle mouse moves
+  function myMove(e) {
+
+    // if we're resizing or dragging anything...
+    if (resizeIdx > -1 || dragIdx > -1) {
+
+      // tell the browser we're handling this mouse event
+      e.preventDefault();
+      e.stopPropagation();
+
+      // get the current mouse position relative to canvas
+      let m = translateMouseCoords(e);
+
+      // calculate the distance the mouse has moved
+      // since the last mousemove
+      var dx = m.x - startX;
+      var dy = m.y - startY;
+
+      if (resizeIdx > -1) {
+        doResize(dx, dy);
+      } else if (dragIdx > -1) {
+        doDrag(dx, dy);
+      }
+
+      // redraw the scene with the new positions/sizes
+      draw();
+
+      // reset the starting mouse position for the next mousemove
+      startX = m.x;
+      startY = m.y;
+    }
+  }
+
+  
+  function doResize(dx, dy) {
+    var s = shapes[resizeIdx];
+    var h = handles[resizeIdx];
+    // rect resizing is different from circle resizing
+    if (s.type === 'rect') {
+      if (s.width + dx >= 10) {
+        s.width = s.width + dx;
+        h.x += dx;
+      }
+      if (s.height + dy >= 10) {
+        s.height = s.height + dy;
+        h.y += dy;
+      }
+    } else if (s.type === 'circle') {
+      if (s.r - dy > 5) {
+        s.r = s.r - dy;
+        h.y = h.y + dy;
+      }
+    }
+  }
+
+
+  function doDrag(dx, dy) {
+    var s = shapes[dragIdx];
+    var h = handles[dragIdx];
+    // dragging is the same regardless of shape type:
+    s.x += dx;
+    s.y += dy;
+    h.x += dx;
+    h.y += dy;
+  }
+
+
+  // translate the coordinates of the mouse event in the viewport
+  // to coordinates relative to the canvas containing the image,
+  // calling this as needed, to account for viewport resizing, 
+  // scrolling, and displaying/hiding the scroll bar
+  function translateMouseCoords(e) {
+    let BB = canvas.getBoundingClientRect();
+    let mx = parseInt(e.clientX - BB.left);
+    let my = parseInt(e.clientY - BB.top);
+    return { x: mx, y: my };
+  }
+  
+
+}
+</script>
+
+</body>
+
+</html>
