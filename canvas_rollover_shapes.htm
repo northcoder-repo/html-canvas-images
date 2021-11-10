@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Canvas Example</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+
+  <style>
+	.targets {
+	  text-align: center;
+	  padding: 10px;
+	}
+  </style>
+</head>
+
+<body>
+
+    <img id="source" alt="taverna" style="display: none;"
+	     src="https://user-images.githubusercontent.com/56733719/141156687-8bbb9eec-4752-4169-b108-50e397e4a8b7.png">
+
+    <div id="container" style="margin: auto; border:1px solid #d3d3d3;">
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div class="targets">
+		<div style="padding: 10px;">
+			<span class="mousetgt" data-idx="0">
+				<a id="lions_link"
+				   data-idx="0"
+				   href="#">[details]</a>
+			</span>
+			<span class="mousetgt" data-idx="0">This is area one</span>
+		</div>
+		<div style="padding: 10px;">
+			<span class="mousetgt" data-idx="1">
+				<a id="lions_link"
+				   data-idx="1"
+				   href="#">[details]</a>
+			</span>
+			<span class="mousetgt" data-idx="1">This is area two</span>
+		</div>
+    </div>
+
+
+
+<script>
+window.onload = function() {
+
+  // load image onto canvas
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const img = document.getElementById('source');
+  const container = document.getElementById('container');
+  container.style.width = '' + (img.naturalWidth + 2) + 'px';
+  canvas.width = img.naturalWidth;
+  canvas.height = img.naturalHeight;
+  ctx.drawImage(img, 1, 1);
+
+  // get canvas related references
+  const WIDTH = canvas.width;
+  const HEIGHT = canvas.height;
+
+  let fillStyle = 'rgba(255, 255, 255, 0.6)';
+  let strokeStyle = 'red';
+
+  // an array of objects that define different shapes:
+  var shapes = [];
+
+  // for testing:
+  shapes.push( {
+    idx: 0,
+    type: 'circle',
+    x: 220,
+    y: 130,
+    r: 65
+  } );
+  shapes.push( {
+    idx: 1,
+    type: 'rect',
+    x: 420,
+    y: 330,
+    width: 145,
+    height: 115
+  } );
+
+  // which shape is the mouse currently inside:
+  var currShape = -1;
+
+  // listen for global mouse events
+  canvas.onmousemove = myMove;
+  canvas.onclick = myClick;
+
+  $( ".mousetgt" ).on( "mouseenter", function() {
+    let idx = $( this ).attr("data-idx");
+    clear();
+    drawShape(shapes[idx]);
+  });
+
+  $( ".mousetgt" ).on( "mouseleave", function() {
+    clear();
+  });
+
+
+  // draw a single rect
+  function drawRect(r) {
+    ctx.fillStyle = fillStyle;
+    ctx.strokeStyle = strokeStyle;
+    ctx.beginPath();
+    ctx.rect(r.x, r.y, r.width, r.height);
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  // draw a single circle
+  function drawCircle(c) {
+    ctx.fillStyle = fillStyle;
+    ctx.strokeStyle = strokeStyle;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fill();
+  }
+
+  // draw the shape's index number in the shape,
+  // for easier visual identification:
+  function drawNumber(i, x, y) {
+    ctx.font="12px Arial";
+    ctx.textAlign="center"; 
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(255, 0, 0, 0.6)";
+    ctx.fillText(i+1, x, y);
+  }
+
+  // clear the canvas
+  function clear() {
+    ctx.clearRect(0, 0, WIDTH, HEIGHT);
+    ctx.drawImage(img, 1, 1);
+  }
+
+  // draw the shape where the mouse is:
+  function drawShape(s) {
+    if (s.type === 'rect') {
+      drawRect(s);
+      drawNumber(s.idx, s.x + (s.width/2), s.y + (s.height/2)); 
+    } else { // it's a circle
+      drawCircle(s);
+      drawNumber(s.idx, s.x, s.y);
+    }
+  }
+
+
+  function pointIsInsideRect(x, y, rect) {
+    return (x > rect.x) && (x < rect.x + rect.width) 
+        && (y > rect.y) && (y < rect.y + rect.height);
+  }
+
+
+  function pointIsInsideCircle(x, y, circ) {
+    return Math.pow(x - circ.x, 2) + Math.pow(y - circ.y, 2) < Math.pow(circ.r, 2);
+  }
+
+
+  // handle mouse moves
+  function myMove(e) {
+
+    let m = translateMouseCoords(e);
+    var prevShape = currShape;
+
+    // which shape (if any) is the mouse inside?
+    for (var i = 0; i < shapes.length; i++) {
+      var s = shapes[i];
+      currShape = -1; // assume we are outside all shapes
+      if ((s.type === 'rect' && pointIsInsideRect(m.x, m.y, s)) 
+          || (s.type === 'circle' && pointIsInsideCircle(m.x, m.y, s))) {
+        currShape = i;
+        break; // stop at first found shape
+      }
+    }
+
+    if (currShape > -1 && currShape !== prevShape) {
+      clear();
+      drawShape(shapes[currShape]);
+    } else if (currShape === -1 && currShape !== prevShape) {
+      clear();
+    }
+
+  }
+
+
+  function myClick(e) {
+
+    let m = translateMouseCoords(e);
+
+    var clickedShape = -1;
+
+    // which shape (if any) is the mouse inside?
+    for (var i = 0; i < shapes.length; i++) {
+      var s = shapes[i];
+      currShape = -1; // assume we are outside all shapes
+      if ((s.type === 'rect' && pointIsInsideRect(m.x, m.y, s)) 
+          || (s.type === 'circle' && pointIsInsideCircle(m.x, m.y, s))) {
+        clickedShape = i;
+        break; // stop at first found shape
+      }
+    }
+
+    if (clickedShape > -1) {
+      clear();
+      $("a[data-idx='" + clickedShape + "']").trigger("click");
+    }
+
+  }
+
+
+  // translate the coordinates of the mouse event in the viewport
+  // to coordinates relative to the canvas containing the image,
+  // calling this as needed, to account for viewport resizing, 
+  // scrolling, and displaying/hiding the scroll bar
+  function translateMouseCoords(e) {
+    let BB = canvas.getBoundingClientRect();
+    let mx = parseInt(e.clientX - BB.left);
+    let my = parseInt(e.clientY - BB.top);
+    return { x: mx, y: my };
+  }
+  
+
+}
+</script>
+
+</body>
+
+</html>
